@@ -9,7 +9,7 @@
       print-matrix ; print a matrix
 
       read-matrix write-matrix
-      T dot add mul sub sigmoid! sigmoid/ sigmoid/! at mean mabs
+      T dot add add! mul sub sigmoid! sigmoid/ sigmoid/! at mean mabs
 
       bytevector->matrix
       list->matrix
@@ -41,6 +41,7 @@
 
    (define msub     (dlsym this "OL_sub"))
    (define madd     (dlsym this "OL_add"))
+   (define maddE    (dlsym this "OL_addE"))
    (define mmul     (dlsym this "OL_mul"))
    (define mT       (dlsym this "OL_T"))
    (define mAt      (dlsym this "OL_at"))
@@ -72,6 +73,7 @@
    (define T mT)
    (define dot mdot)
    (define add madd)
+   (define add! maddE)
    (define mul mmul)
    (define sub msub)
 

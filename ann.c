@@ -32,14 +32,14 @@ word* create_new_matrix_(OL* this, size_t m, size_t n, size_t nw, ...)
 
         va_start(ptrs, nw);
         for (int i = 0; i < nw; i++)
-            id[i] = OL_pin(this, *(va_arg(ptrs, word*)));
+            id[i] = OL_pin((struct ol_t*)this, *(va_arg(ptrs, word*)));
         va_end(ptrs);
 
-        this->gc(this, words);
+        this->gc((struct ol_t*)this, words);
 
         va_start(ptrs, nw);
         for (int i = 0; i < nw; i++)
-            *(va_arg(ptrs, word*)) = OL_unpin(this, id[i]);
+            *(va_arg(ptrs, word*)) = OL_unpin((struct ol_t*)this, id[i]);
         va_end(ptrs);
     }
 
@@ -50,20 +50,9 @@ word* create_new_matrix_(OL* this, size_t m, size_t n, size_t nw, ...)
     return matrix;
 }
 
-#define PP_NARG(...) PP_NARG_(__VA_ARGS__,PP_RSEQ_N())
-#define PP_NARG_(...) PP_ARG_N(__VA_ARGS__)
-#define PP_ARG_N(_1,_2,_3,_4,_5,_6,_7,_8,_9,N,...) N
-#define PP_RSEQ_N() 9,8,7,6,5,4,3,2,1,0
-
-#define PPCAT_NX(A, B) A ## B
-#define PPCAT(A, B) PPCAT_NX(A, B)
-#define PPCAT_NX(A, B) A ## B
-#define PPCAT(A, B) PPCAT_NX(A, B)
-#define STRINGIZE_NX(A) #A
-#define STRINGIZE(A) STRINGIZE_NX(A)
-
-#define create_new_matrix(this, m, n, ...) \
-    create_new_matrix_(this, m, n, PP_NARG(__VA_ARGS__), ## __VA_ARGS__)
+#define NARG(...) NARG_N(_, ## __VA_ARGS__,9,8,7,6,5,4,3,2,1,0)
+#define NARG_N(_, n0,n1,n2,n3,n4,n5,n6,n7,n8,n,...) n
+#define create_new_matrix(this, m, n, ...) create_new_matrix_(this, m, n, NARG(__VA_ARGS__), ##__VA_ARGS__)
 
 
 //PUBLIC
@@ -543,6 +532,32 @@ word* OL_add(OL* this, word* arguments)
         *c++ = *a++ + *b++;
 
     return C;
+}
+
+__attribute__((used))
+word* OL_addE(OL* this, word* arguments)
+{
+    word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
+    word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
+    assert ((word)arguments == INULL);
+    // todo: assert for matrix sizes
+
+    size_t m = value(ref(A, 1));
+    size_t n = value(ref(A, 2));
+
+    if (value(ref(B, 1)) != m)
+        return (word*)IFALSE;
+    if (value(ref(B, 2)) != n)
+        return (word*)IFALSE;
+
+    float* a = (float*) (ref(A, 3) + W);
+    float* b = (float*) (ref(B, 3) + W);
+
+    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
+    for (size_t i = 0; i < size; i++)
+        *a++ += *b++;
+
+    return A;
 }
 
 __attribute__((used))
