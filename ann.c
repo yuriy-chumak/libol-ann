@@ -14,6 +14,8 @@ typedef float fp_t;
 
 #define MEMPAD (1024) // TODO: exclude this
 
+// TODO: use https://github.com/hfp/libxsmm/blob/master/samples/hello/hello.c
+
 // ---------------------------------------------------------
 // эта функция не только создает новую матрицу, но и
 // 1. вызывает GC, если для матрицы нехватает места
