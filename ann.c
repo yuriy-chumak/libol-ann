@@ -6,8 +6,7 @@
 #include <math.h>
 #include <stdio.h>
 
-#include <ol/olvm.h>
-typedef struct heap_t OL;
+#include <ol/vm.h>
 
 // тип, который мы будем использовать для вычислений (обычно - float)
 typedef float fp_t;
@@ -15,6 +14,8 @@ typedef float fp_t;
 #define MEMPAD (1024) // TODO: exclude this
 
 // TODO: use https://github.com/hfp/libxsmm/blob/master/samples/hello/hello.c
+// TODO: Matrix Multiplication
+//       https://cnugteren.github.io/tutorial/pages/page1.html
 
 // ---------------------------------------------------------
 // эта функция не только создает новую матрицу, но и
@@ -22,44 +23,47 @@ typedef float fp_t;
 // 2. сохраняет и восстанавливает Ol-объекты, если они были
 //    перемещены GC
 static
-word* create_new_matrix_(OL* this, size_t m, size_t n, size_t nw, ...)
+word* create_new_matrix_(ol_t* this, size_t m, size_t n, size_t nw, ...)
 {
     word* fp;
+	heap_t* heap = (struct heap_t*)this;
     size_t vsize = m * n * sizeof(fp_t);
 
     size_t words = (vsize + (W-1)) / W;
-    if ((this->fp + words) > (this->end - MEMPAD)) {
+    if ((heap->fp + words) > (heap->end - MEMPAD)) {
         va_list ptrs;
         size_t id[nw];
 
-        va_start(ptrs, nw);
+        // save Ol objects before GC
+		va_start(ptrs, nw);
         for (int i = 0; i < nw; i++)
-            id[i] = OL_pin((struct ol_t*)this, *(va_arg(ptrs, word*)));
+            id[i] = OLVM_pin(this, *(va_arg(ptrs, word*)));
         va_end(ptrs);
 
-        this->gc((struct ol_t*)this, words);
+        heap->gc(this, words);
 
+		// restore OL objects after GC
         va_start(ptrs, nw);
         for (int i = 0; i < nw; i++)
-            *(va_arg(ptrs, word*)) = OL_unpin((struct ol_t*)this, id[i]);
+            *(va_arg(ptrs, word*)) = OLVM_unpin((struct ol_t*)this, id[i]);
         va_end(ptrs);
     }
 
-    fp = this->fp;
+    fp = heap->fp;
 	word* floats = new_bytevector(vsize);
     word* matrix = new_vector(I(m), I(n), floats);
-    this->fp = fp;
+    heap->fp = fp;
     return matrix;
 }
 
-#define NARG(...) NARG_N(_, ## __VA_ARGS__,9,8,7,6,5,4,3,2,1,0)
-#define NARG_N(_, n0,n1,n2,n3,n4,n5,n6,n7,n8,n,...) n
+#define NARG(...) NARG_N(_, ## __VA_ARGS__,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0)
+#define NARG_N(_,n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,mn10,n11,n12,n13,n14,n15,n16,n17,n18, n,...) n
 #define create_new_matrix(this, m, n, ...) create_new_matrix_(this, m, n, NARG(__VA_ARGS__), ##__VA_ARGS__)
 
 
 //PUBLIC
 __attribute__((used))
-word* OL_mnew(OL* this, word* arguments)
+word* OL_mnew(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // m
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // n
@@ -73,9 +77,10 @@ word* OL_mnew(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_at(OL* this, word* arguments)
+word* OL_at(ol_t* this, word* arguments)
 {
-    word* fp; // this easily indicate that we do manual mory allocations
+    word* fp; // this easily indicate that we do manual memory allocations
+	heap_t* heap = (struct heap_t*)this;
 
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     word* R = (word*)car(arguments); arguments = (word*)cdr(arguments); // (i) row
@@ -89,7 +94,7 @@ word* OL_at(OL* this, word* arguments)
     size_t i = value(R);
     size_t j = value(C);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
     if (i == 0 || i > m ||
         i == 0 || j > n ||
         ((i-1)*n + (j-1)) >= size) { // invalid matrix
@@ -97,10 +102,9 @@ word* OL_at(OL* this, word* arguments)
     }
     --i; --j;
 
-    fp = this->fp;
-    // todo: check memory
-    word* object = new_binstream(TINEXACT, sizeof(inexact_t));
-    this->fp = fp;
+    fp = heap->fp;
+    word* object = new_rawstream(TINEXACT, sizeof(inexact_t));
+    heap->fp = fp;
 
     fp_t* floats = (fp_t*) (ref(A, 3) + W);
     fp_t v = floats[i*n + j];
@@ -111,7 +115,7 @@ word* OL_at(OL* this, word* arguments)
 
 
 __attribute__((used))
-word* OL_mrandomE(OL* this, word* arguments)
+word* OL_mrandomE(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     assert ((word)arguments == INULL);
@@ -119,7 +123,7 @@ word* OL_mrandomE(OL* this, word* arguments)
     size_t m = value(ref(A, 1));
     size_t n = value(ref(A, 2));
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
 
     // random();
     fp_t* floats = (float*) (ref(A, 3) + W);
@@ -130,13 +134,13 @@ word* OL_mrandomE(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_mwrite(OL* this, word* arguments)
+word* OL_mwrite(ol_t* this, word* arguments)
 {
     word* M = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // filename
     assert ((word)arguments == INULL);
 
-    size_t flen = binstream_size(A);
+    size_t flen = rawstream_size(A);
     char* filename = __builtin_alloca(flen+1);
     memcpy(filename, &car(A), flen);
     filename[flen] = 0;
@@ -167,12 +171,12 @@ word* OL_mwrite(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_mread(OL* this, word* arguments)
+word* OL_mread(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     assert ((word)arguments == INULL);
 
-    size_t flen = binstream_size(A);
+    size_t flen = rawstream_size(A);
     char* filename = __builtin_alloca(flen+1);
     memcpy(filename, &car(A), flen);
     filename[flen] = 0;
@@ -212,7 +216,7 @@ fail:
 }
 
 __attribute__((used)) // todo: change to matrix [1xN] builer, not a floats bytevector?
-word* OL_bv2f(OL* this, word* arguments)
+word* OL_bv2f(ol_t* this, word* arguments)
 {
     fp_t ds = 1.0f; // downscale
 
@@ -224,7 +228,7 @@ word* OL_bv2f(OL* this, word* arguments)
     assert ((word)arguments == INULL);
 
     // todo: сохранить матрицу
-    size_t n = binstream_size(A);
+    size_t n = rawstream_size(A);
     word* matrix = create_new_matrix(this, 1, n, &A);
 
     fp_t* f = (fp_t*) (ref(matrix, 3) + W);
@@ -236,7 +240,7 @@ word* OL_bv2f(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_l2f(OL* this, word* arguments)
+word* OL_l2f(ol_t* this, word* arguments)
 {
     float ds = 1.0f; // downscale
 
@@ -267,8 +271,11 @@ word* OL_l2f(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_f2l(OL* this, word* arguments)
+word* OL_f2l(ol_t* this, word* arguments)
 {
+	word* fp;
+	heap_t* heap = (struct heap_t*)this;
+
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     assert ((word)arguments == INULL);
 
@@ -276,24 +283,52 @@ word* OL_f2l(OL* this, word* arguments)
     size_t n = value(ref(A, 2));
     float* floats = (float*)(ref(A, 3) + W);
 
-    word *fp = this->fp;
+    fp = heap->fp;
     word *p = (word*)INULL;
     for (int i = (m * n) - 1; i >= 0; i--) {
-        word* o = new_binstream(TINEXACT, sizeof(inexact_t));
+        word* o = new_rawstream(TINEXACT, sizeof(inexact_t));
         inexact_t* f = (inexact_t*)(o + 1);
         *f = floats[i];
         p = NEW_PAIR(o, p);
     }
-    this->fp = fp;
+    heap->fp = fp;
 
     return p;
 }
 
+__attribute__((used))
+word* OL_setrefE(ol_t* this, word* arguments)
+{
+    word* A = (word*)car(arguments); arguments = (word*)cdr(arguments);
+    word* I = (word*)car(arguments); arguments = (word*)cdr(arguments); // downscale (нормализация)
+    word* J = (word*)car(arguments); arguments = (word*)cdr(arguments); // downscale (нормализация)
+    word* X = (word*)car(arguments); arguments = (word*)cdr(arguments); // downscale (нормализация)
+    assert ((word)arguments == INULL);
+
+    size_t m = value(ref(A, 1));
+    size_t n = value(ref(A, 2));
+
+	// printf("m: %d, n: %d\n", m, n);
+	return RFALSE;
+
+    size_t i = number(I);
+	size_t j = number(J);
+
+    float x = *(float*)(X + 1);
+
+    float* floats = (float*)(ref(A, 3) + W);
+
+	if (i == 0 || i > m || j == 0 || j > n)
+		return RFALSE;
+
+	floats[i*n + j] = x;
+	return X;
+}
 
 // функции активации
 // https://en.wikipedia.org/wiki/Sigmoid_function
 __attribute__((used))
-word* OL_sigmoid(OL* this, word* arguments)
+word* OL_sigmoid(ol_t* this, word* arguments)
 // todo: add "sigmoid! == OL_sigmoidE" version that is not require reallocation
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
@@ -307,7 +342,7 @@ word* OL_sigmoid(OL* this, word* arguments)
     float* a = (float*) (ref(A, 3) + W);
     float* b = (float*) (ref(B, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
     for (size_t i = 0; i < size; i++) { // todo: use real 
         fp_t x = *a++;
         *b++ = 1.0f / (1.0f + exp(-x));
@@ -317,7 +352,7 @@ word* OL_sigmoid(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sigmoidE(OL* this, word* arguments)
+word* OL_sigmoidE(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -330,7 +365,7 @@ word* OL_sigmoidE(OL* this, word* arguments)
     float* a = (float*) (ref(A, 3) + W);
     float* b = (float*) (ref(B, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
     for (size_t i = 0; i < size; i++) { // todo: use real 
         fp_t x = *a++;
         *b++ = 1.0f / (1.0f + exp(-x));
@@ -340,7 +375,7 @@ word* OL_sigmoidE(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sigmoidD(OL* this, word* arguments)
+word* OL_sigmoidD(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -353,7 +388,7 @@ word* OL_sigmoidD(OL* this, word* arguments)
     float* a = (float*) (ref(A, 3) + W);
     float* b = (float*) (ref(B, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
     for (size_t i = 0; i < size; i++) { // todo: use real 
         fp_t x = *a++;
         fp_t sigm = 1.0f / (1.0f + exp(-x)); // x?
@@ -364,7 +399,7 @@ word* OL_sigmoidD(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sigmoidDE(OL* this, word* arguments)
+word* OL_sigmoidDE(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -377,7 +412,7 @@ word* OL_sigmoidDE(OL* this, word* arguments)
     float* a = (float*) (ref(A, 3) + W);
     float* b = (float*) (ref(B, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
     for (size_t i = 0; i < size; i++) { // todo: use real 
         fp_t x = *a++;
         fp_t sigm = 1.0f / (1.0f + exp(-x));
@@ -388,7 +423,7 @@ word* OL_sigmoidDE(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_abs(OL* this, word* arguments)
+word* OL_abs(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -401,7 +436,7 @@ word* OL_abs(OL* this, word* arguments)
     float* a = (float*) (ref(A, 3) + W);
     float* b = (float*) (ref(B, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
     for (size_t i = 0; i < size; i++) { // todo: use real 
         fp_t x = *a++;
         fp_t f = (fp_t)fabs(x);
@@ -413,9 +448,10 @@ word* OL_abs(OL* this, word* arguments)
 
 
 __attribute__((used))
-word* OL_mean(OL* this, word* arguments)
+word* OL_mean(ol_t* this, word* arguments)
 {
     word* fp;
+	heap_t* heap = (struct heap_t*)this;
 
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -425,16 +461,16 @@ word* OL_mean(OL* this, word* arguments)
 
     float* a = (float*) (ref(A, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t);
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t);
     inexact_t S = 0;
     for (size_t i = 0; i < size; i++) { // todo: use real 
         S += *a++;
     }
     S /= (inexact_t)size;
 
-    fp = this->fp;
-    word* object = new_binstream(TINEXACT, sizeof(inexact_t));
-    this->fp = fp;
+    fp = heap->fp;
+    word* object = new_rawstream(TINEXACT, sizeof(inexact_t));
+    heap->fp = fp;
 
     *(inexact_t*)(object + 1) = S;
 
@@ -442,7 +478,7 @@ word* OL_mean(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_dot(OL* this, word* arguments)
+word* OL_dot(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -462,10 +498,13 @@ word* OL_dot(OL* this, word* arguments)
     fp_t* b = (fp_t*) (ref(B, 3) + W);
     fp_t* c = (fp_t*) (ref(C, 3) + W);
 
-    for (size_t i = 0; i < m; i++) {
-        for (size_t j = 0; j < q; j++) {
+	size_t i,j,k;
+#pragma omp parallel shared(a,b,c) private(i,j)
+    for (i = 0; i < m; i++) {
+        for (j = 0; j < q; j++) {
             fp_t S = 0;
-            for(size_t k = 0; k < n; k++) {
+#pragma omp parallel shared(a,b,c) firstprivate(i,j) private(k) reduction(+:S)
+            for (k = 0; k < n; k++) {
                 fp_t f1 = a[i*n + k];
                 fp_t f2 = b[k*q + j];
                 S += a[i*n + k] * b[k*q + j];
@@ -479,7 +518,7 @@ word* OL_dot(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sub(OL* this, word* arguments)
+word* OL_sub(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -500,7 +539,7 @@ word* OL_sub(OL* this, word* arguments)
     float* b = (float*) (ref(B, 3) + W);
     float* c = (float*) (ref(C, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
     for (size_t i = 0; i < size; i++)
         *c++ = *a++ - *b++;
 
@@ -508,7 +547,7 @@ word* OL_sub(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_add(OL* this, word* arguments)
+word* OL_add(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -529,7 +568,7 @@ word* OL_add(OL* this, word* arguments)
     float* b = (float*) (ref(B, 3) + W);
     float* c = (float*) (ref(C, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
     for (size_t i = 0; i < size; i++)
         *c++ = *a++ + *b++;
 
@@ -537,7 +576,7 @@ word* OL_add(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_addE(OL* this, word* arguments)
+word* OL_addE(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -555,7 +594,7 @@ word* OL_addE(OL* this, word* arguments)
     float* a = (float*) (ref(A, 3) + W);
     float* b = (float*) (ref(B, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
     for (size_t i = 0; i < size; i++)
         *a++ += *b++;
 
@@ -563,7 +602,7 @@ word* OL_addE(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_mul(OL* this, word* arguments)
+word* OL_mul(ol_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -584,7 +623,7 @@ word* OL_mul(OL* this, word* arguments)
     float* b = (float*) (ref(B, 3) + W);
     float* c = (float*) (ref(C, 3) + W);
 
-    size_t size = binstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
+    size_t size = rawstream_size(ref(A, 3)) / sizeof(fp_t); // todo: assert for matrix B size
     for (size_t i = 0; i < size; i++)
         *c++ = *a++ * *b++;
 
@@ -592,7 +631,7 @@ word* OL_mul(OL* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_T(OL* this, word* arguments) // transpose
+word* OL_T(ol_t* this, word* arguments) // transpose
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);

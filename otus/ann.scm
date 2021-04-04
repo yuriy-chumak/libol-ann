@@ -13,6 +13,17 @@
 
       bytevector->matrix
       list->matrix
+      set-matrix-ref! ; set cell [m,n] value
+
+      ; new experimental API
+      σ
+      make-input-layer
+      make-dense-layer
+      get-layer
+      make-ann
+
+      evaluate ; вычислить нейросеть, возвращает сложный объект со всеми промежуточными результатами (необходимый для дальнейшего обучения сети). непосредственно результат брать с помощью caar.
+      backpropagate! ; обратно распространить ошибку (процесс обучения сети), изменяет нейросеть!
    )
    (import (otus lisp)
       (otus random!)
@@ -24,7 +35,7 @@
    (define this (dlopen "libol-ann.so"))
    (unless this
       (print "libol-ann.so not found")
-      (halt 1))
+      (halt 1)) ; todo: use lisp functions (slow but it will work anyway)
 
    (define mnew     (dlsym this "OL_mnew")) ; create MxN matrix
    (define mrandom! (dlsym this "OL_mrandomE")) ; set matrix elements randomly to [-1..+1]
@@ -33,8 +44,9 @@
    (define bv2f     (dlsym this "OL_bv2f"))
    (define l2f      (dlsym this "OL_l2f"))
    (define f2l      (dlsym this "OL_f2l"))
+   (define msetref! (dlsym this "OL_setrefE"))
    (define mdot     (dlsym this "OL_dot"))
-   (define msigmoid   (dlsym this "OL_sigmoid"))  ; важно: https://uk.wikipedia.org/wiki/Передавальна_функція_штучного_нейрона
+   (define msigmoid (dlsym this "OL_sigmoid"))  ; важно: https://uk.wikipedia.org/wiki/Передавальна_функція_штучного_нейрона
    (define msigmoid!  (dlsym this "OL_sigmoidE"))
    (define msigmoid/  (dlsym this "OL_sigmoidD"))
    (define msigmoid/! (dlsym this "OL_sigmoidDE"))
@@ -70,6 +82,8 @@
    (define bytevector->matrix bv2f)
    (define list->matrix l2f)
 
+   (define set-matrix-ref! msetref!)
+
    (define T mT)
    (define dot mdot)
    (define add madd)
@@ -83,4 +97,97 @@
    (define at mAt)
    (define mean mmean)
 
+   ; new experimental API
+   (define σ 'sigmoid)
+
+   ; создать слой входящих значений - де-факто задать размерность 
+   (define (make-input-layer count)
+      (list [[1 count #false] #f #f]))
+
+   ; создать промежуточный слой из count нейронов
+   ; activation-function - функция активации
+   ; activation-function/ - первая производная функции активации
+   ; predecessor - предыдущий слой
+   (define (make-dense-layer count activation-function predecessor)
+      (let*((a a/ (case activation-function
+                     ('sigmoid
+                        (values sigmoid! sigmoid/))
+                     (else
+                        (runtime-error "unknown activation function" activation-function)))))
+         (define pred (car predecessor))
+         (define matrix (ref pred 1))
+         (cons
+            [(make-matrix (ref matrix 2) count) a a/]
+            predecessor)))
+
+   ; получить n-й слой сети (начиная с 1)
+   (define (get-layer ann n)
+      (ref (lref (reverse (ref ann 2)) n) 1))
+
+   ; создать нейросеть из топологии
+   (define (make-ann layers)
+      ; проинициализируем значения весов случайными числами из диапазона [0..1]
+      (for-each
+         (lambda (layer)
+            (if (ref (ref layer 1) 3)
+               (randomize-matrix! (ref layer 1))))
+         layers)
+      ; вернем объект "нейросеть"
+      ['ann: layers #null]) ; layers values
+
+   (define (evaluate ann data)
+      ; проверка, что данные подходят по размерности
+      (assert (and
+         (vector? data)
+         (eq? (size data) 3)
+         (eq? (ref data 1) (ref (ref (last (ref ann 2) #f) 1) 1))
+         (eq? (ref data 2) (ref (ref (last (ref ann 2) #f) 1) 2))
+      ) ===> #true)
+      ; наша нейросеть - это последовательный список матриц перехода между слоями нейронов (условно называемых "тензорами")
+      ; это состояние постоянно меняется в процессе обучения
+      ; кроме того в процессе вычисления мы получаем состояние слоев, которое можно спокойно забывать как только мы прошли один цикл обучения
+      (let loop ((ann (ref ann 2)))
+         (if (eq? (ref (car ann) 2) #f) ; this is input layer
+            (list (cons data #false))
+         else (begin
+            (define prev (loop (cdr ann))) ; предыдущий слой
+            (define tensor (car ann)) ; текущая матрица слоя
+            (define af (ref tensor 2)) ; функция активации
+
+            (define layer (af (dot (caar prev) (ref tensor 1)))) ; значение следующего слоя
+
+            (cons (cons layer tensor) prev))))
+      ; теперь на выходе у нас есть список состояний слоев и тензоров между ними
+      ; первый элемент - результат работы сети
+      ; смысл в сохранении промежуточных значений - обучение
+   )
+
+   ; обучение сети методом обратного распространения ошибки,
+   ; изменяет внутреннее состояние сети, переданной в evaluate!
+   (define (backpropagate! eva error) ; backpropagate
+      (assert (and
+         (vector? error)
+         (eq? (size error) 3)
+         (eq? (ref error 1) (ref (caar eva) 1))
+         (eq? (ref error 2) (ref (caar eva) 2))
+      ) ===> #true)
+
+      (let loop ((eva eva) (error error) (d2 #f) (syn #f))
+         (define layer (caar eva)) ; значение слоя
+         (define tensor (cdar eva)); матрица преобразования между слоями (а так же функция активации и ее производная)
+
+         ;; (define error (if tensor
+         ;;    (if answer ; ожидаемый ответ сети
+         ;;       (sub answer layer)
+         ;;       (dot d2 (T syn)))))
+         (define delta (if tensor
+            (mul
+               (or error (dot d2 (T syn)))
+               ((ref tensor 3) layer))))
+
+         (if syn ; матрица предыдущего слоя - теперь ее можно учить
+            (add! syn (dot (T layer) d2)))
+
+         (if tensor
+            (loop (cdr eva) #false delta (ref tensor 1)))))
 ))
