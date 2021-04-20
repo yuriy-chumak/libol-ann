@@ -35,7 +35,7 @@
    (define this (dlopen "libol-ann.so"))
    (unless this
       (print "libol-ann.so not found")
-      (halt 1)) ; todo: use lisp functions (slow but it will work anyway)
+      (halt 1))
 
    (define mnew     (dlsym this "OL_mnew")) ; create MxN matrix
    (define mrandom! (dlsym this "OL_mrandomE")) ; set matrix elements randomly to [-1..+1]

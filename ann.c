@@ -23,7 +23,7 @@ typedef float fp_t;
 // 2. сохраняет и восстанавливает Ol-объекты, если они были
 //    перемещены GC
 static
-word* create_new_matrix_(ol_t* this, size_t m, size_t n, size_t nw, ...)
+word* create_new_matrix_(olvm_t* this, size_t m, size_t n, size_t nw, ...)
 {
     word* fp;
 	heap_t* heap = (struct heap_t*)this;
@@ -45,7 +45,7 @@ word* create_new_matrix_(ol_t* this, size_t m, size_t n, size_t nw, ...)
 		// restore OL objects after GC
         va_start(ptrs, nw);
         for (int i = 0; i < nw; i++)
-            *(va_arg(ptrs, word*)) = OLVM_unpin((struct ol_t*)this, id[i]);
+            *(va_arg(ptrs, word*)) = OLVM_unpin((struct olvm_t*)this, id[i]);
         va_end(ptrs);
     }
 
@@ -63,7 +63,7 @@ word* create_new_matrix_(ol_t* this, size_t m, size_t n, size_t nw, ...)
 
 //PUBLIC
 __attribute__((used))
-word* OL_mnew(ol_t* this, word* arguments)
+word* OL_mnew(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // m
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // n
@@ -77,7 +77,7 @@ word* OL_mnew(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_at(ol_t* this, word* arguments)
+word* OL_at(olvm_t* this, word* arguments)
 {
     word* fp; // this easily indicate that we do manual memory allocations
 	heap_t* heap = (struct heap_t*)this;
@@ -115,7 +115,7 @@ word* OL_at(ol_t* this, word* arguments)
 
 
 __attribute__((used))
-word* OL_mrandomE(ol_t* this, word* arguments)
+word* OL_mrandomE(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     assert ((word)arguments == INULL);
@@ -134,7 +134,7 @@ word* OL_mrandomE(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_mwrite(ol_t* this, word* arguments)
+word* OL_mwrite(olvm_t* this, word* arguments)
 {
     word* M = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // filename
@@ -171,7 +171,7 @@ word* OL_mwrite(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_mread(ol_t* this, word* arguments)
+word* OL_mread(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
     assert ((word)arguments == INULL);
@@ -216,7 +216,7 @@ fail:
 }
 
 __attribute__((used)) // todo: change to matrix [1xN] builer, not a floats bytevector?
-word* OL_bv2f(ol_t* this, word* arguments)
+word* OL_bv2f(olvm_t* this, word* arguments)
 {
     fp_t ds = 1.0f; // downscale
 
@@ -240,7 +240,7 @@ word* OL_bv2f(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_l2f(ol_t* this, word* arguments)
+word* OL_l2f(olvm_t* this, word* arguments)
 {
     float ds = 1.0f; // downscale
 
@@ -271,7 +271,7 @@ word* OL_l2f(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_f2l(ol_t* this, word* arguments)
+word* OL_f2l(olvm_t* this, word* arguments)
 {
 	word* fp;
 	heap_t* heap = (struct heap_t*)this;
@@ -297,7 +297,7 @@ word* OL_f2l(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_setrefE(ol_t* this, word* arguments)
+word* OL_setrefE(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments);
     word* I = (word*)car(arguments); arguments = (word*)cdr(arguments); // downscale (нормализация)
@@ -328,7 +328,7 @@ word* OL_setrefE(ol_t* this, word* arguments)
 // функции активации
 // https://en.wikipedia.org/wiki/Sigmoid_function
 __attribute__((used))
-word* OL_sigmoid(ol_t* this, word* arguments)
+word* OL_sigmoid(olvm_t* this, word* arguments)
 // todo: add "sigmoid! == OL_sigmoidE" version that is not require reallocation
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
@@ -352,7 +352,7 @@ word* OL_sigmoid(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sigmoidE(ol_t* this, word* arguments)
+word* OL_sigmoidE(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -375,7 +375,7 @@ word* OL_sigmoidE(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sigmoidD(ol_t* this, word* arguments)
+word* OL_sigmoidD(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -399,7 +399,7 @@ word* OL_sigmoidD(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sigmoidDE(ol_t* this, word* arguments)
+word* OL_sigmoidDE(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -423,7 +423,7 @@ word* OL_sigmoidDE(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_abs(ol_t* this, word* arguments)
+word* OL_abs(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
@@ -448,7 +448,7 @@ word* OL_abs(ol_t* this, word* arguments)
 
 
 __attribute__((used))
-word* OL_mean(ol_t* this, word* arguments)
+word* OL_mean(olvm_t* this, word* arguments)
 {
     word* fp;
 	heap_t* heap = (struct heap_t*)this;
@@ -478,7 +478,7 @@ word* OL_mean(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_dot(ol_t* this, word* arguments)
+word* OL_dot(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -518,7 +518,7 @@ word* OL_dot(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_sub(ol_t* this, word* arguments)
+word* OL_sub(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -547,7 +547,7 @@ word* OL_sub(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_add(ol_t* this, word* arguments)
+word* OL_add(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -576,7 +576,7 @@ word* OL_add(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_addE(ol_t* this, word* arguments)
+word* OL_addE(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -602,7 +602,7 @@ word* OL_addE(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_mul(ol_t* this, word* arguments)
+word* OL_mul(olvm_t* this, word* arguments)
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     word* B = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix B
@@ -631,7 +631,7 @@ word* OL_mul(ol_t* this, word* arguments)
 }
 
 __attribute__((used))
-word* OL_T(ol_t* this, word* arguments) // transpose
+word* OL_T(olvm_t* this, word* arguments) // transpose
 {
     word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix A
     assert ((word)arguments == INULL);
