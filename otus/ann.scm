@@ -9,6 +9,7 @@
       print-matrix ; print a matrix
 
       read-matrix write-matrix
+      read-matrix!
       T dot add add! mul sub sigmoid! sigmoid/ sigmoid/! at mean mabs
 
       bytevector->matrix
@@ -40,7 +41,8 @@
    (define mnew     (dlsym this "OL_mnew")) ; create MxN matrix
    (define mrandom! (dlsym this "OL_mrandomE")) ; set matrix elements randomly to [-1..+1]
    (define mwrite   (dlsym this "OL_mwrite")) ; write matrix to the file
-   (define mread    (dlsym this "OL_mread")) ; read matrix from the file
+   (define mread    (dlsym this "OL_mread")) ; (filename), read matrix from the file
+   (define mread!   (dlsym this "OL_mreadE")) ; (matrix filename), read matrix from the file
    (define bv2f     (dlsym this "OL_bv2f"))
    (define l2f      (dlsym this "OL_l2f"))
    (define f2l      (dlsym this "OL_f2l"))
@@ -77,6 +79,7 @@
          (iota (ref M 1) 1)))
 
    (define read-matrix mread)
+   (define read-matrix! mread!)
    (define write-matrix mwrite)
 
    (define bytevector->matrix bv2f)

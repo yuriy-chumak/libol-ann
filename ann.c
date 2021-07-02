@@ -173,7 +173,7 @@ word* OL_mwrite(olvm_t* this, word* arguments)
 __attribute__((used))
 word* OL_mread(olvm_t* this, word* arguments)
 {
-    word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
+    word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // filename
     assert ((word)arguments == INULL);
 
     size_t flen = rawstream_size(A);
@@ -205,6 +205,54 @@ word* OL_mread(olvm_t* this, word* arguments)
 
     // матрица
     word* matrix = create_new_matrix(this, m, n);
+
+    read = fread((float*)(ref(matrix, 3) + W), sizeof(float), m*n, file);
+
+    fclose(file);
+    return matrix;
+fail:
+    fclose(file);
+    return (word*)IFALSE;
+}
+
+__attribute__((used))
+word* OL_mreadE(olvm_t* this, word* arguments)
+{
+    word* M = (word*)car(arguments); arguments = (word*)cdr(arguments); // matrix
+    word* A = (word*)car(arguments); arguments = (word*)cdr(arguments); // filename
+    assert ((word)arguments == INULL);
+
+    size_t flen = rawstream_size(A);
+    char* filename = __builtin_alloca(flen+1);
+    memcpy(filename, &car(A), flen);
+    filename[flen] = 0;
+
+    FILE* file = fopen(filename, "rb");
+    if (!file)
+        return (word*)IFALSE;
+
+    // заголовок (1 в конце значит, что это флоаты)
+    int32_t magic = 0; // = *(int32_t*)"ann\x1";
+    size_t read;
+
+    read = fread(&magic, sizeof(magic), 1, file);
+    if (magic != *(int32_t*)"ann\x1")
+        goto fail;
+
+    // размерность
+    uint32_t m = 0; // == value(ref(M, 1));
+    uint32_t n = 0; // == value(ref(M, 2));
+
+    read = fread(&m, sizeof(m), 1, file);
+    read = fread(&n, sizeof(n), 1, file);
+
+    if (m == 0 || n == 0)
+        goto fail;
+	if (m != value(ref(M, 1)) || n != value(ref(M, 2)))
+        goto fail;
+
+    // матрица
+    word* matrix = M;
 
     read = fread((float*)(ref(matrix, 3) + W), sizeof(float), m*n, file);
 
