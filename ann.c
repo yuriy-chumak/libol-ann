@@ -102,13 +102,12 @@ word* OL_at(olvm_t* this, word* arguments)
     }
     --i; --j;
 
-    fp = heap->fp;
-    word* object = new_rawstream(TINEXACT, sizeof(inexact_t));
-    heap->fp = fp;
-
     fp_t* floats = (fp_t*) (ref(A, 3) + W);
     fp_t v = floats[i*n + j];
-    *(inexact_t*)(object + 1) = v;
+
+    fp = heap->fp;
+    word* object = new_inexact(v);
+    heap->fp = fp;
 
     return object;
 }
@@ -334,9 +333,7 @@ word* OL_f2l(olvm_t* this, word* arguments)
     fp = heap->fp;
     word *p = (word*)INULL;
     for (int i = (m * n) - 1; i >= 0; i--) {
-        word* o = new_rawstream(TINEXACT, sizeof(inexact_t));
-        inexact_t* f = (inexact_t*)(o + 1);
-        *f = floats[i];
+        word* o = new_inexact(floats[i]);
         p = NEW_PAIR(o, p);
     }
     heap->fp = fp;
@@ -517,10 +514,8 @@ word* OL_mean(olvm_t* this, word* arguments)
     S /= (inexact_t)size;
 
     fp = heap->fp;
-    word* object = new_rawstream(TINEXACT, sizeof(inexact_t));
+    word* object = new_inexact(S);
     heap->fp = fp;
-
-    *(inexact_t*)(object + 1) = S;
 
     return object;
 }

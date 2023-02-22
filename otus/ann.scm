@@ -2,25 +2,32 @@
    (export
       ; create MxN matrix
       make-matrix ; M N
+      at ; (ref mat i j)
 
       ; set matrix elements randomly to [-1..+1]
       randomize-matrix! ; matrix
+      mzero!
 
       print-matrix ; print a matrix
 
       read-matrix write-matrix
       read-matrix!
-      T dot add add! mul sub sigmoid! sigmoid/ sigmoid/! at mean mabs
+      T dot add add! mul sub sigmoid! sigmoid/ sigmoid/! at mean
+      mabs mclamp mclamp!
 
       bytevector->matrix
       list->matrix
+      matrix->list
+      vector->matrix
+      reshape
+
       set-matrix-ref! ; set cell [m,n] value
 
       ; new experimental API
       σ
       make-input-layer
       make-dense-layer
-      get-layer
+      get-layer layers-count
       make-ann
 
       evaluate ; вычислить нейросеть, возвращает сложный объект со всеми промежуточными результатами (необходимый для дальнейшего обучения сети). непосредственно результат брать с помощью caar.
@@ -39,13 +46,19 @@
       (halt 1))
 
    (define mnew     (dlsym this "OL_mnew")) ; create MxN matrix
+   (define mref     (dlsym this "OL_mref")) ; (ref matrix i j)
+
    (define mrandom! (dlsym this "OL_mrandomE")) ; set matrix elements randomly to [-1..+1]
+   (define mzero!   (dlsym this "OL_zeroE")) ; set matrix elements to 0
+
    (define mwrite   (dlsym this "OL_mwrite")) ; write matrix to the file
    (define mread    (dlsym this "OL_mread")) ; (filename), read matrix from the file
    (define mread!   (dlsym this "OL_mreadE")) ; (matrix filename), read matrix from the file
-   (define bv2f     (dlsym this "OL_bv2f"))
-   (define l2f      (dlsym this "OL_l2f"))
+   (define l2m      (dlsym this "OL_l2m"))
+   (define v2m      (dlsym this "OL_v2m"))
+   (define bv2m     (dlsym this "OL_bv2m"))
    (define f2l      (dlsym this "OL_f2l"))
+   (define mreshape (dlsym this "OL_mreshape"))
    (define msetref! (dlsym this "OL_setrefE"))
    (define mdot     (dlsym this "OL_dot"))
    (define msigmoid (dlsym this "OL_sigmoid"))  ; важно: https://uk.wikipedia.org/wiki/Передавальна_функція_штучного_нейрона
@@ -58,13 +71,18 @@
    (define maddE    (dlsym this "OL_addE"))
    (define mmul     (dlsym this "OL_mul"))
    (define mT       (dlsym this "OL_T"))
-   (define mAt      (dlsym this "OL_at"))
    (define mabs     (dlsym this "OL_abs"))
    (define mmean    (dlsym this "OL_mean"))
+   (define mclamp   (dlsym this "OL_clamp"))
+   (define mclamp!  (dlsym this "OL_clampE"))
 
    ; public API
    (define (make-matrix M N)
       (mnew M N))
+
+   (define (matrix? m)
+      (and (vector? m)
+           (eq? (size m) 3)))
 
    (define (randomize-matrix! m)
       (mrandom! m))
@@ -72,7 +90,7 @@
    (define (print-matrix M)
       (for-each (lambda (i)
             (for-each (lambda (j)
-                  (display (mAt M i j))
+                  (display (mref M i j))
                   (display " "))
                (iota (ref M 2) 1))
             (print))
@@ -82,8 +100,12 @@
    (define read-matrix! mread!)
    (define write-matrix mwrite)
 
-   (define bytevector->matrix bv2f)
-   (define list->matrix l2f)
+   (define bytevector->matrix bv2m)
+   (define list->matrix l2m)
+   (define matrix->list f2l)
+   (define vector->matrix v2m)
+
+   (define reshape mreshape)
 
    (define set-matrix-ref! msetref!)
 
@@ -97,7 +119,7 @@
    (define sigmoid! msigmoid!)
    (define sigmoid/ msigmoid/)
    (define sigmoid/! msigmoid/!)
-   (define at mAt)
+   (define at mref)
    (define mean mmean)
 
    ; new experimental API
@@ -125,7 +147,12 @@
 
    ; получить n-й слой сети (начиная с 1)
    (define (get-layer ann n)
-      (ref (lref (reverse (ref ann 2)) n) 1))
+      (if (negative? n)
+         (ref (lref (ref ann 2) (negate n)) 1)
+         (ref (lref (reverse (ref ann 2)) n) 1)))
+
+   (define (layers-count ann)
+      (- (length (ref ann 2)) 1))
 
    ; создать нейросеть из топологии
    (define (make-ann layers)
@@ -141,16 +168,15 @@
    (define (evaluate ann data)
       ; проверка, что данные подходят по размерности
       (assert (and
-         (vector? data)
-         (eq? (size data) 3)
-         (eq? (ref data 1) (ref (ref (last (ref ann 2) #f) 1) 1))
+         (matrix? data)
+         (eq? (ref data 1) (ref (ref (last (ref ann 2) #f) 1) 1)) ; размерность выходного вектора
          (eq? (ref data 2) (ref (ref (last (ref ann 2) #f) 1) 2))
-      ) ===> #true)
+      ))
       ; наша нейросеть - это последовательный список матриц перехода между слоями нейронов (условно называемых "тензорами")
       ; это состояние постоянно меняется в процессе обучения
       ; кроме того в процессе вычисления мы получаем состояние слоев, которое можно спокойно забывать как только мы прошли один цикл обучения
       (let loop ((ann (ref ann 2)))
-         (if (eq? (ref (car ann) 2) #f) ; this is input layer
+         (if (eq? (ref (car ann) 2) #f) ; входный слой данных
             (list (cons data #false))
          else (begin
             (define prev (loop (cdr ann))) ; предыдущий слой
@@ -169,8 +195,7 @@
    ; изменяет внутреннее состояние сети, переданной в evaluate!
    (define (backpropagate! eva error) ; backpropagate
       (assert (and
-         (vector? error)
-         (eq? (size error) 3)
+         (matrix? error)
          (eq? (ref error 1) (ref (caar eva) 1))
          (eq? (ref error 2) (ref (caar eva) 2))
       ) ===> #true)
