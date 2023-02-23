@@ -50,7 +50,9 @@ word OL_clampE(olvm_t* this, word arguments)
     fp_t* b = matrix_floats(B);
     size_t len = matrix_len(A);
     for (size_t i = 0; i < len; i++) {
-        *b++ = clamp(*a++, x, y);
+        fp_t q = *a++;
+        q = clamp(q, x, y);
+        *b++ = q;
     }
 
     return B;

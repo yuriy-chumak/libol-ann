@@ -12,7 +12,7 @@
 
       read-matrix write-matrix
       read-matrix!
-      T dot add add! mul sub sigmoid! sigmoid/ sigmoid/! at mean
+      T dot add add! mul sub at mean
       mabs mclamp mclamp!
 
       bytevector->matrix
@@ -24,7 +24,13 @@
       set-matrix-ref! ; set cell [m,n] value
 
       ; new experimental API
-      σ
+
+      ; activation functions (′ is a sign for primes)
+      σ S Sigmoid
+      Tanh
+
+
+      ; 
       make-input-layer
       make-dense-layer
       get-layer layers-count
@@ -61,11 +67,27 @@
    (define mreshape (dlsym this "OL_mreshape"))
    (define msetref! (dlsym this "OL_setrefE"))
    (define mdot     (dlsym this "OL_dot"))
-   (define msigmoid (dlsym this "OL_sigmoid"))  ; важно: https://uk.wikipedia.org/wiki/Передавальна_функція_штучного_нейрона
-   (define msigmoid!  (dlsym this "OL_sigmoidE"))
-   (define msigmoid/  (dlsym this "OL_sigmoidD"))
-   (define msigmoid/! (dlsym this "OL_sigmoidDE"))
 
+   ; activation functions:
+   ; https://uk.wikipedia.org/wiki/Передавальна_функція_штучного_нейрона
+   (define-macro a-function (lambda (name)
+      (define sname (symbol->string name))
+      `(define-values (
+         ,(string->symbol (string-append sname ""))
+         ,(string->symbol (string-append sname "!"))
+         ,(string->symbol (string-append sname "/"))
+         ,(string->symbol (string-append sname "/!")))
+         (values
+            ,(dlsym this (string-append "OL_" sname ""))
+            ,(dlsym this (string-append "OL_" sname "E"))
+            ,(dlsym this (string-append "OL_" sname "_prime"))
+            ,(dlsym this (string-append "OL_" sname "_primeE")))) ))
+
+   (a-function Sigmoid)
+   (a-function Tanh)
+
+
+   ; matrix math:
    (define msub     (dlsym this "OL_sub"))
    (define madd     (dlsym this "OL_add"))
    (define maddE    (dlsym this "OL_addE"))
@@ -106,6 +128,8 @@
    (define vector->matrix v2m)
 
    (define reshape mreshape)
+   (define at mref)
+   (define mean mmean)
 
    (define set-matrix-ref! msetref!)
 
@@ -116,14 +140,13 @@
    (define mul mmul)
    (define sub msub)
 
-   (define sigmoid! msigmoid!)
-   (define sigmoid/ msigmoid/)
-   (define sigmoid/! msigmoid/!)
-   (define at mref)
-   (define mean mmean)
-
    ; new experimental API
-   (define σ 'sigmoid)
+   (define σ 'Sigmoid) ; todo: remove this
+   (define S 'Sigmoid)
+
+   (define activation-functions {
+      S (cons Sigmoid! Sigmoid/)
+   })
 
    ; создать слой входящих значений - де-факто задать размерность 
    (define (make-input-layer count)
@@ -134,11 +157,10 @@
    ; activation-function/ - первая производная функции активации
    ; predecessor - предыдущий слой
    (define (make-dense-layer count activation-function predecessor)
-      (let*((a a/ (case activation-function
-                     ('sigmoid
-                        (values sigmoid! sigmoid/))
-                     (else
-                        (runtime-error "unknown activation function" activation-function)))))
+      (let*((a a/ (uncons (activation-functions activation-function) #f)))
+         (unless a
+            (runtime-error "unknown activation function" activation-function))
+
          (define pred (car predecessor))
          (define matrix (ref pred 1))
          (cons

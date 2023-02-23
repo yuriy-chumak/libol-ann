@@ -69,7 +69,7 @@ word OL_mnew(olvm_t* this, word arguments)
     return new_matrix(this, m, n);
 }
 
-// // (at matrix row column)
+// (at matrix row column)
 // индексация начинается с 1, негитивные индексы поддерживаются
 __attribute__((used))
 word OL_mref(olvm_t* this, word arguments)
