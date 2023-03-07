@@ -12,10 +12,18 @@
         (fp_t, double), 1.0, 1.0f)
 
 // ========================================================================
+// Identity
+DECLARE_ACTIVATION_FUNCTION(Identity,
+{
+    return x;
+}, {
+    return 1;
+})
+
 // Linear(x, m)
 // Elu(x, Alpha)
 
-DECLARE_ACTIVATION_FUNCTION(Relu,
+DECLARE_ACTIVATION_FUNCTION(ReLU,
 {
     return (x > 0) ? x : 0;
 }, {
@@ -39,3 +47,5 @@ DECLARE_ACTIVATION_FUNCTION(Tanh,
 }, {
     return 1 - pow(Tanh(x), 2);
 })
+
+// Exp, GeLU, HardSigmoid, SeLU, softplus, softsign, swish, trelu

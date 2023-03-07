@@ -25,9 +25,9 @@
 
       ; new experimental API
 
-      ; activation functions (′ is a sign for primes)
+      ; activation functions (′″‴ are prime signs)
       σ S Sigmoid
-      Tanh
+      Tanh ReLU Identity
 
 
       ; 
@@ -83,6 +83,8 @@
             ,(dlsym this (string-append "OL_" sname "_prime"))
             ,(dlsym this (string-append "OL_" sname "_primeE")))) ))
 
+   (a-function Identity)
+   (a-function ReLU)
    (a-function Sigmoid)
    (a-function Tanh)
 
@@ -146,7 +148,22 @@
 
    (define activation-functions {
       S (cons Sigmoid! Sigmoid/)
+      'ReLU (cons ReLU! ReLU/)
    })
+
+   ; ---------------------------------
+   ; слой: [matrix afunc! afunc_prime]
+   ; matrix: [m n bytevector]
+
+   ; todo: convolution layer
+   ;       deconvolution layer
+   ;       recurrent...
+
+   ; получить n-й слой сети (начиная с 1)
+   (define (get-layer ann n)
+      (if (negative? n)
+         (ref (lref (ref ann 2) (negate n)) 1)
+         (ref (lref (reverse (ref ann 2)) n) 1)))
 
    ; создать слой входящих значений - де-факто задать размерность 
    (define (make-input-layer count)
@@ -167,12 +184,6 @@
             [(make-matrix (ref matrix 2) count) a a/]
             predecessor)))
 
-   ; получить n-й слой сети (начиная с 1)
-   (define (get-layer ann n)
-      (if (negative? n)
-         (ref (lref (ref ann 2) (negate n)) 1)
-         (ref (lref (reverse (ref ann 2)) n) 1)))
-
    (define (layers-count ann)
       (- (length (ref ann 2)) 1))
 
@@ -188,39 +199,40 @@
       ['ann: layers #null]) ; layers values
 
    (define (evaluate ann data)
-      ; проверка, что данные подходят по размерности
       (assert (and
          (matrix? data)
-         (eq? (ref data 1) (ref (ref (last (ref ann 2) #f) 1) 1)) ; размерность выходного вектора
-         (eq? (ref data 2) (ref (ref (last (ref ann 2) #f) 1) 2))
+         ;; (eq? (ref data 1) (ref (ref (last (ref ann 2) #f) 1) 1)) ; размерность выходного вектора
+         ;; (eq? (ref data 2) (ref (ref (last (ref ann 2) #f) 1) 2))
       ))
-      ; наша нейросеть - это последовательный список матриц перехода между слоями нейронов (условно называемых "тензорами")
+
+      ; нейросеть - это последовательный список матриц перехода между слоями нейронов
       ; это состояние постоянно меняется в процессе обучения
       ; кроме того в процессе вычисления мы получаем состояние слоев, которое можно спокойно забывать как только мы прошли один цикл обучения
       (let loop ((ann (ref ann 2)))
          (if (eq? (ref (car ann) 2) #f) ; входный слой данных
-            (list (cons data #false))
-         else (begin
-            (define prev (loop (cdr ann))) ; предыдущий слой
-            (define tensor (car ann)) ; текущая матрица слоя
-            (define af (ref tensor 2)) ; функция активации
+            (list (cons ; развернем входную матрицу
+               (reshape data 1 (* (ref data 1) (ref data 2)))
+               #false))
+         else
+            (define prev (loop (cdr ann)))  ; предыдущий слой
+            (define matrix (car ann))  ; текущая матрица слоя
+            (define af (ref matrix 2))  ; функция активации
 
-            (define layer (af (dot (caar prev) (ref tensor 1)))) ; значение следующего слоя
-
-            (cons (cons layer tensor) prev))))
-      ; теперь на выходе у нас есть список состояний слоев и тензоров между ними
+            (define layer (af (dot (caar prev) (ref matrix 1)))) ; значение следующего слоя
+            (cons (cons layer matrix) prev)))
+      ; теперь на выходе у нас есть список состояний слоев и матриц между ними
       ; первый элемент - результат работы сети
       ; смысл в сохранении промежуточных значений - обучение
    )
 
    ; обучение сети методом обратного распространения ошибки,
-   ; изменяет внутреннее состояние сети, переданной в evaluate!
+   ; изменяет внутреннее состояние сети, переданной в evaluate(!)
    (define (backpropagate! eva error) ; backpropagate
       (assert (and
          (matrix? error)
          (eq? (ref error 1) (ref (caar eva) 1))
          (eq? (ref error 2) (ref (caar eva) 2))
-      ) ===> #true)
+      ))
 
       (let loop ((eva eva) (error error) (d2 #f) (syn #f))
          (define layer (caar eva)) ; значение слоя
